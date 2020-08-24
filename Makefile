@@ -12,7 +12,7 @@ BIN = bin
 
 # cflags and source code
 CFLAGS += $(DEFS) -Wall -g -O3 -D_GNU_SOURCE
-LDFLAGS +=
+LDFLAGS += -laio
 LIBS    = $(SRC)/bench.c $(SRC)/util.c
 TC      = $(SRC)/MWCM.c $(SRC)/MWCL.c \
 		  $(SRC)/DWAL.c $(SRC)/DWOL.c \

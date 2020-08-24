@@ -11,8 +11,13 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <libaio.h>
+#include <sys/stat.h>
 #include "fxmark.h"
 #include "util.h"
+
+#define NBYTES 4096
+#define NBUF   512
 
 #define PRIVATE_REGION_SIZE (1024 * 1024 * 8)
 #define PRIVATE_REGION_PAGE_NUM (PRIVATE_REGION_SIZE/PAGE_SIZE)
@@ -84,11 +89,21 @@ err_out:
                 free(page);
         goto out;
 }
-
+// pread(int fd, void *buf, size_t count, off_t offset);
+// preadv2(int fd, const struct iovec *iov, int iovcnt, off_t offset, int flags);
 static int main_work(struct worker *worker)
-{
+{       
+        int j, k, nbytes = PAGE_SIZE, maxevents = PATH_MAX;
+	char *buf[PATH_MAX];
+	struct iocb *iocbray[PATH_MAX], *iocb;
+	off_t offset;
+	io_context_t ctx = 0;
+	struct io_event events[2 * PATH_MAX];
+	struct timespec timeout = { 0, 0 };
+
         struct bench *bench = worker->bench;
         char *page = worker->page;
+        
         char path[PATH_MAX];
         int fd, rc = 0;
         off_t pos;
@@ -104,11 +119,31 @@ static int main_work(struct worker *worker)
         if(bench->directio && (fcntl(fd, F_SETFL, O_DIRECT)==-1))
                 goto err_out;
 
+        for (j = 0; j < PATH_MAX; j++) {
+		/* no need to zero iocbs; will be done in io_prep_pread */
+		iocbray[j] = malloc(sizeof(struct iocb));
+		buf[j] = malloc(PAGE_SIZE);
+		memset(buf[j], 0, PAGE_SIZE);
+	}
+        
+        rc = io_setup(maxevents, &ctx);
+
         pos = PRIVATE_REGION_SIZE * worker->id;
         for (iter = 0; !bench->stop; ++iter) {
-                if (pread(fd, page, PAGE_SIZE, pos) != PAGE_SIZE)
-                        goto err_out;
+                if (iter == PATH_MAX) iter = 0;
+                iocb = iocbray[iter];
+		// offset = iter * nbytes;
+                // printf("read\n");
+                io_prep_pread(iocb, fd, page, PAGE_SIZE, pos);
+                // printf("pread completed");
+		rc = io_submit(ctx, 1, &iocb);
+                // if (pread(fd, page, PAGE_SIZE, pos) != PAGE_SIZE)
+                //         goto err_out;
         }
+        while ((rc = io_getevents(ctx, PATH_MAX, PATH_MAX, events, &timeout)) > 0) {
+		//printf(" rc from io_getevents on the read = %d\n\n", rc);
+	}
+        rc = io_destroy(ctx);
         close(fd);
 out:
         worker->works = (double)iter;
@@ -124,3 +159,4 @@ struct bench_operations n_shfile_rd_ops = {
         .pre_work  = pre_work,
         .main_work = main_work,
 };
+
