@@ -110,6 +110,7 @@ static int main_work(struct worker *worker)
         uint64_t iter = 0;
 
         assert(page);
+        srand(time(NULL));
 
         set_test_file(worker, path);
         if ((fd = open(path, O_CREAT | O_RDWR, S_IRWXU)) == -1)
@@ -132,17 +133,10 @@ static int main_work(struct worker *worker)
         for (j=0,iter = 0; !bench->stop; j++,++iter) {
                 if (j == PATH_MAX) j = 0;
                 iocb = iocbray[j];
-                // offset = iter * nbytes;
-                // printf("read\n");
-                // io_prep_pread(iocb, fd, page, PAGE_SIZE, pos);
-                pos += PAGE_SIZE;
-                if (pos - PRIVATE_REGION_SIZE){
-                        pos = PRIVATE_REGION_SIZE * worker->id;
-                }
-                // printf("pread completed");
-                // rc = io_submit(ctx, 1, &iocb);
-                if (pread(fd, page, PAGE_SIZE, pos) != PAGE_SIZE)
-                        goto err_out;
+                io_prep_pread(iocb, fd, page, PAGE_SIZE, pos + (rand() % 2048) * 4096);
+                rc = io_submit(ctx, 1, &iocb);
+                // if (pread(fd, page, PAGE_SIZE, pos + (rand() % 2048) * 4096) != PAGE_SIZE)
+                //         goto err_out;
         }
         while ((rc = io_getevents(ctx, PATH_MAX, PATH_MAX, events, &timeout)) > 0) {
                 //printf(" rc from io_getevents on the read = %d\n\n", rc);
